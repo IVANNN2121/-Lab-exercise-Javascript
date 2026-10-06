@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Race Stopwatch</title>
+    <style>
+      :root {
+        --track: #e8e6e1;
+        --ink: #1a1a1a;
+        --go: #1f8a4c;
+        --stop: #c93a2b;
+        --best: #1f8a4c;
+        --worst: #c93a2b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        background: var(--track);
+        color: var(--ink);
+        font-family: "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+      }
+
+      .timer {
+        width: 100%;
+        max-width: 460px;
+        padding: 40px 20px;
+        text-align: center;
+      }
+
+      .display {
+        font-size: clamp(3.5rem, 18vw, 5.5rem);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 1px;
+        padding: 20px 0 28px;
+        border-bottom: 6px solid var(--ink);
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .btn {
+        flex: 1;
+        padding: 16px 0;
+        font: inherit;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 2px solid var(--ink);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .btn:focus-visible {
+        outline: 3px solid var(--ink);
+        outline-offset: 2px;
+      }
+      .btn.start {
+        background: var(--go);
+        color: #fff;
+        border-color: var(--go);
+      }
+      .btn.stop {
+        background: var(--stop);
+        color: #fff;
+        border-color: var(--stop);
+      }
+
+      .hint {
+        font-size: 0.85rem;
+        opacity: 0.65;
+        margin: 12px 0 0;
+      }
+
+      .laps {
+        width: 100%;
+        margin-top: 28px;
+        border-collapse: collapse;
+        font-size: 1.1rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .laps th,
+      .laps td {
+        padding: 10px 6px;
+        text-align: right;
+      }
+      .laps th:first-child,
+      .laps td:first-child {
+        text-align: left;
+      }
+      .laps thead th {
+        border-bottom: 2px solid var(--ink);
+        font-weight: 700;
+      }
+      .laps tbody tr {
+        border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+      }
+      .laps .best {
+        color: var(--best);
+        font-weight: 700;
+      }
+      .laps .worst {
+        color: var(--worst);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="timer">
+      <div class="display" id="display" aria-live="off">00:00.00</div>
+
+      <div class="controls">
+        <button id="startStop" class="btn start">Start</button>
+        <button id="lap" class="btn" disabled>Lap</button>
+        <button id="reset" class="btn" disabled>Reset</button>
+      </div>
+      <p class="hint">Keyboard: Space = Start/Stop, L = Lap, R = Reset</p>
+
+      <table class="laps" id="lapTable" hidden>
+        <thead>
+          <tr>
+            <th>Lap</th>
+            <th>Lap time</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="lapBody"></tbody>
+      </table>
+    </main>
+    <script>
+      const display = document.getElementById("display");
+      const startStop = document.getElementById("startStop");
+      const lapBtn = document.getElementById("lap");
+      const resetBtn = document.getElementById("reset");
+      const lapTable = document.getElementById("lapTable");
+      const lapBody = document.getElementById("lapBody");
+
+      let running = false;
+      let startTime = 0; // performance.now() when the current run began
+      let elapsedBefore = 0; // time saved from earlier start/stop runs
+      let lastLapTotal = 0; // total time at the previous lap
+      let laps = []; // { lapTime, total }
+      let rafId = null;
+
+      function now() {
+        return running
+          ? elapsedBefore + (performance.now() - startTime)
+          : elapsedBefore;
+      }
+
+      function format(ms) {
+        const totalCs = Math.floor(ms / 10);
+        const cs = String(totalCs % 100).padStart(2, "0");
+        const sec = String(Math.floor(totalCs / 100) % 60).padStart(2, "0");
+        const min = String(Math.floor(totalCs / 6000)).padStart(2, "0");
+        return `${min}:${sec}.${cs}`;
+      }
+
+      function tick() {
+        display.textContent = format(now());
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function toggle() {
+        if (running) {
+          elapsedBefore = now();
+          running = false;
+          cancelAnimationFrame(rafId);
+          display.textContent = format(elapsedBefore);
+          startStop.textContent = "Start";
+          startStop.className = "btn start";
+          lapBtn.disabled = true;
+        } else {
+          startTime = performance.now();
+          running = true;
+          tick();
+          startStop.textContent = "Stop";
+          startStop.className = "btn stop";
+          lapBtn.disabled = false;
+          resetBtn.disabled = false;
+        }
+      }
+
+      function lap() {
+        if (!running) return;
+        const total = now();
+        laps.push({ lapTime: total - lastLapTotal, total });
+        lastLapTotal = total;
+        renderLaps();
+      }
+
+      function reset() {
+        running = false;
+        cancelAnimationFrame(rafId);
+        elapsedBefore = 0;
+        lastLapTotal = 0;
+        laps = [];
+        display.textContent = format(0);
+        startStop.textContent = "Start";
+        startStop.className = "btn start";
+        lapBtn.disabled = true;
+        resetBtn.disabled = true;
+        renderLaps();
+      }
+
+      function renderLaps() {
+        lapTable.hidden = laps.length === 0;
+        lapBody.innerHTML = "";
+        const times = laps.map((l) => l.lapTime);
+        const best = Math.min(...times);
+        const worst = Math.max(...times);
+
+        // newest lap on top
+        for (let i = laps.length - 1; i >= 0; i--) {
+          const row = document.createElement("tr");
+          if (laps.length > 1) {
+            if (laps[i].lapTime === best) row.className = "best";
+            else if (laps[i].lapTime === worst) row.className = "worst";
+          }
+          row.innerHTML = `<td>${i + 1}</td><td>${format(laps[i].lapTime)}</td><td>${format(laps[i].total)}</td>`;
+          lapBody.appendChild(row);
+        }
+      }
+
+      startStop.addEventListener("click", toggle);
+      lapBtn.addEventListener("click", lap);
+      resetBtn.addEventListener("click", reset);
+
+      document.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          toggle();
+        } else if (e.key === "l" || e.key === "L") lap();
+        else if ((e.key === "r" || e.key === "R") && !resetBtn.disabled)
+          reset();
+      });
+    </script>
+  </body>
+</html>
